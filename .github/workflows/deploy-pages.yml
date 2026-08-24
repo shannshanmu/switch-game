@@ -23,11 +23,31 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # Pages cannot be enabled from a workflow on this repo (private repo;
+      # GITHUB_TOKEN may not create the Pages site). Probe for it and skip
+      # gracefully instead of failing every push until it is switched on in
+      # Settings -> Pages -> Source: "GitHub Actions".
+      - name: Check whether Pages is enabled
+        id: pages-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages")
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" = "200" ]; then
+            echo "Pages is enabled — deploying."
+          else
+            echo "::notice title=Pages not enabled::GitHub Pages is not enabled for this repository (API returned $status). Enable it under Settings -> Pages -> Source: 'GitHub Actions' (requires a plan that supports Pages on private repos, or a public repo), then re-run this workflow."
+          fi
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+        if: steps.pages-check.outputs.status == '200'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.pages-check.outputs.status == '200'
         with:
           path: app
       - id: deployment
+        if: steps.pages-check.outputs.status == '200'
         uses: actions/deploy-pages@v4
