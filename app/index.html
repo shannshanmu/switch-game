@@ -32,20 +32,27 @@
       <button id="btn-stats" class="big-btn ghost">My stats</button>
       <button id="btn-tips" class="big-btn ghost">Tips — solve it faster</button>
     </div>
-    <div class="practice-tier-row" id="practice-tier-row">
-      <span>Practice difficulty:</span>
-      <label><input type="radio" name="ptier" value="auto" checked> auto-ramp</label>
-      <label><input type="radio" name="ptier" value="1"> 1 · single</label>
-      <label><input type="radio" name="ptier" value="2"> 2 · one given</label>
-      <label><input type="radio" name="ptier" value="3"> 3 · two given</label>
-      <label><input type="radio" name="ptier" value="4"> 4 · both unknown</label>
+    <div class="practice-setup" id="practice-setup">
+      <span class="setup-label">Practice exercise type</span>
+      <label><input type="radio" name="pmode" value="progressive" checked> Progressive <span class="btn-sub">— starts easy, levels up as you get questions right</span></label>
+      <label><input type="radio" name="pmode" value="random"> Random <span class="btn-sub">— draws from the question types below</span></label>
+      <div class="setup-types disabled" id="setup-types"></div>
+      <span class="setup-label">Practice time</span>
+      <label><input type="checkbox" id="p-infinite" checked> Infinite time ∞</label>
+      <span class="time-inputs disabled" id="p-time-inputs">
+        <input type="number" id="p-min" min="0" max="60" value="6" aria-label="minutes"> min
+        <input type="number" id="p-sec" min="0" max="59" value="0" aria-label="seconds"> sec
+      </span>
     </div>
-    <p class="kbd-hint">Keys: <kbd>1</kbd>–<kbd>3</kbd> pick a code · <kbd>Enter</kbd> next · <kbd>Backspace</kbd> undo row pick · <kbd>Esc</kbd> menu</p>
+    <p class="kbd-hint">Keys: <kbd>1</kbd>–<kbd>3</kbd> pick a code · <kbd>Enter</kbd> confirm / next · <kbd>Backspace</kbd> undo row pick · <kbd>Esc</kbd> menu</p>
   </section>
 
   <!-- ============ GAME ============ -->
   <section id="screen-game" class="screen hidden">
     <div id="puzzle" class="puzzle"></div>
+    <button id="btn-confirm" class="confirm-bar" disabled aria-label="Confirm answer">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z"/></svg>
+    </button>
     <div id="feedback" class="feedback hidden"></div>
     <div class="game-controls">
       <button id="btn-show-answer" class="small-btn ghost hidden">Show answer</button>

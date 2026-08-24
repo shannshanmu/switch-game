@@ -15,15 +15,20 @@
 //           3 codes, pick one code per row ("most difficult levels" video)
 
 export const SYMBOL_POOL = [
+  // The modern AON set (user-supplied screenshot of the current assessment).
+  { id: 'star', color: '#4a9fd8', label: 'blue star' },
+  { id: 'play', color: '#8e5bc6', label: 'purple triangle' },
+  { id: 'hexagon', color: '#f2c11e', label: 'yellow hexagon' },
+  { id: 'diamond', color: '#d64565', label: 'pink diamond' },
+  // The older set shown throughout the tutorial videos.
   { id: 'circle', color: '#3e8e58', label: 'green circle' },
   { id: 'cross', color: '#3d78c9', label: 'blue cross' },
   { id: 'square', color: '#e2694e', label: 'red square' },
   { id: 'triangle', color: '#f0b400', label: 'yellow triangle' },
-  { id: 'diamond', color: '#8e44ad', label: 'purple diamond' },
-  { id: 'star', color: '#00acc1', label: 'teal star' },
 ];
 
-// The classic AON set shown in the videos (always these four, varying order).
+// The current test's set (screenshot evidence) and the videos' classic set.
+const MODERN_SET = ['star', 'play', 'hexagon', 'diamond'];
 const CLASSIC_SET = ['circle', 'cross', 'square', 'triangle'];
 
 export const OPTION_COUNT = 3;
@@ -112,9 +117,20 @@ function optionSet(rng) {
 }
 
 function pickSymbols(rng) {
-  // The real test always uses the classic four; ~80% of questions do too,
-  // with occasional variety for extra working-memory training.
-  const ids = rng() < 0.8 ? CLASSIC_SET : shuffled(SYMBOL_POOL.map((s) => s.id), rng).slice(0, 4);
+  // Mostly the current test's set, sometimes the videos' classic set, with a
+  // sprinkle of mixed sets for extra working-memory training. Mixed draws
+  // avoid pairing the two yellow shapes (hexagon + triangle).
+  const r = rng();
+  let ids;
+  if (r < 0.7) ids = MODERN_SET;
+  else if (r < 0.85) ids = CLASSIC_SET;
+  else {
+    let guard = 0;
+    do {
+      ids = shuffled(SYMBOL_POOL.map((s) => s.id), rng).slice(0, 4);
+    } while (ids.includes('hexagon') && ids.includes('triangle') && guard++ < 20);
+    if (ids.includes('hexagon') && ids.includes('triangle')) ids = MODERN_SET;
+  }
   return shuffled(ids.map((id) => SYMBOL_POOL.find((s) => s.id === id)), rng);
 }
 
@@ -125,6 +141,19 @@ export const TIERS = [
   { id: 4, kind: 'chain2-open', label: 'Double switch · both unknown' },
 ];
 
+// The 7 question types of the real test (MECHANICS.md §2), individually
+// selectable in Practice's "random" mode. Labels follow the phrasing of the
+// exercise-type panel the user supplied.
+export const QUESTION_TYPES = [
+  { id: 1, tier: 1, kind: 'single', unknownAt: 0, label: 'One row' },
+  { id: 3, tier: 2, kind: 'chain2-given', unknownAt: 0, label: 'Two rows — options on first row' },
+  { id: 2, tier: 2, kind: 'chain2-given', unknownAt: 1, label: 'Two rows — options on last row' },
+  { id: 6, tier: 3, kind: 'chain3-given', unknownAt: 0, label: 'Three rows — options on first row' },
+  { id: 7, tier: 3, kind: 'chain3-given', unknownAt: 1, label: 'Three rows — options on middle row' },
+  { id: 5, tier: 3, kind: 'chain3-given', unknownAt: 2, label: 'Three rows — options on last row' },
+  { id: 4, tier: 4, kind: 'chain2-open', unknownAt: null, label: 'Two rows — options on both rows' },
+];
+
 // A question is:
 // { tier, kind, symbols, output, steps }
 // where steps is an ordered array (top to bottom between the funnels) of:
@@ -133,19 +162,29 @@ export const TIERS = [
 // tier 4 has two option steps sharing one option set; others exactly one.
 export function generateQuestion(tierId, rng = Math.random) {
   const tier = TIERS.find((t) => t.id === tierId) ?? TIERS[0];
-  const symbols = pickSymbols(rng);
-
-  if (tier.kind === 'chain2-open') {
-    return generateChain2Open(tier, symbols, rng);
-  }
-
-  const chainLen = tier.kind === 'single' ? 1 : tier.kind === 'chain2-given' ? 2 : 3;
   // Position of the unknown operator within the chain. Together with tiers 1
   // and 4 this covers all "7 question types" named in the study-guide page
   // shown in the mqsoRw9PJ2M video (33:20).
   let unknownAt = 0;
   if (tier.kind === 'chain2-given') unknownAt = randInt(2, rng);
   if (tier.kind === 'chain3-given') unknownAt = randInt(3, rng);
+  return buildQuestion(tier.id, tier.kind, unknownAt, rng);
+}
+
+// Generate a question of one specific real-test type (Practice random mode).
+export function generateQuestionOfType(typeId, rng = Math.random) {
+  const spec = QUESTION_TYPES.find((t) => t.id === typeId) ?? QUESTION_TYPES[0];
+  return buildQuestion(spec.tier, spec.kind, spec.unknownAt ?? 0, rng);
+}
+
+function buildQuestion(tierId, kind, unknownAt, rng) {
+  const symbols = pickSymbols(rng);
+
+  if (kind === 'chain2-open') {
+    return generateChain2Open({ id: tierId, kind }, symbols, rng);
+  }
+
+  const chainLen = kind === 'single' ? 1 : kind === 'chain2-given' ? 2 : 3;
 
   // Options first, answer designated uniformly afterwards (see optionSet).
   const options = optionSet(rng);
@@ -175,7 +214,7 @@ export function generateQuestion(tierId, rng = Math.random) {
   const steps = perms.map((p, i) => (
     i === unknownAt ? { options, answerIndex } : { given: p }
   ));
-  return { tier: tier.id, kind: tier.kind, symbols, output, steps };
+  return { tier: tierId, kind, symbols, output, steps };
 }
 
 // Tier 4: both operators unknown; the two rows share one set of 3 codes (as in
