@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switch Challenge — AON assessment practice (BNP Paribas, P&amp;G)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Cpolygon points='2,4 34,4 24,16 12,16' fill='%231d7484'/%3E%3Crect x='10' y='18' width='16' height='8' rx='2' fill='%233d78c9'/%3E%3Cpolygon points='12,28 24,28 34,34 2,34' fill='%231d7484'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">// switchChallenge <span class="brand-sub">— practice</span></div>
+  <div class="topbar-right">
+    <span id="level-badge" class="level-badge hidden">★ Level <span id="level-num">1</span></span>
+    <span id="qcount" class="qcount hidden"></span>
+    <span id="clock" class="clock hidden">6:00</span>
+  </div>
+</header>
+<div id="timerbar" class="timerbar"><div id="timerbar-fill" class="timerbar-fill"></div></div>
+
+<main>
+  <!-- ============ MENU ============ -->
+  <section id="screen-menu" class="screen">
+    <h1>Switch Challenge</h1>
+    <p class="tagline">Practice clone of the AON assessment (BNP Paribas, P&amp;G).<br>
+    Pick the 4-digit code that turns the top row into the bottom row —<br>
+    digit <em>k</em> of the code says which top position feeds output slot <em>k</em>.</p>
+    <div class="menu-buttons">
+      <button id="btn-practice" class="big-btn">Practice <span class="btn-sub">untimed · instant feedback</span></button>
+      <button id="btn-test" class="big-btn primary">Test <span class="btn-sub">6:00 · adaptive · report at the end</span></button>
+      <button id="btn-rules" class="big-btn ghost">Rules — how a question works</button>
+      <button id="btn-stats" class="big-btn ghost">My stats</button>
+      <button id="btn-tips" class="big-btn ghost">Tips — solve it faster</button>
+    </div>
+    <div class="practice-tier-row" id="practice-tier-row">
+      <span>Practice difficulty:</span>
+      <label><input type="radio" name="ptier" value="auto" checked> auto-ramp</label>
+      <label><input type="radio" name="ptier" value="1"> 1 · single</label>
+      <label><input type="radio" name="ptier" value="2"> 2 · one given</label>
+      <label><input type="radio" name="ptier" value="3"> 3 · two given</label>
+      <label><input type="radio" name="ptier" value="4"> 4 · both unknown</label>
+    </div>
+    <p class="kbd-hint">Keys: <kbd>1</kbd>–<kbd>3</kbd> pick a code · <kbd>Enter</kbd> next · <kbd>Backspace</kbd> undo row pick · <kbd>Esc</kbd> menu</p>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section id="screen-game" class="screen hidden">
+    <div id="puzzle" class="puzzle"></div>
+    <div id="feedback" class="feedback hidden"></div>
+    <div class="game-controls">
+      <button id="btn-show-answer" class="small-btn ghost hidden">Show answer</button>
+      <button id="btn-next" class="small-btn hidden">Next → <span class="btn-sub">Enter</span></button>
+      <button id="btn-quit" class="small-btn ghost">End session</button>
+    </div>
+  </section>
+
+  <!-- ============ REPORT ============ -->
+  <section id="screen-report" class="screen hidden">
+    <h2>Session report</h2>
+    <div id="report-body"></div>
+    <div class="menu-buttons">
+      <button id="btn-again" class="big-btn primary">Go again</button>
+      <button id="btn-report-menu" class="big-btn ghost">Menu</button>
+    </div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section id="screen-stats" class="screen hidden">
+    <h2>My stats</h2>
+    <div id="stats-body"></div>
+    <div class="menu-buttons">
+      <button id="btn-stats-menu" class="big-btn ghost">Menu</button>
+      <button id="btn-clear-stats" class="small-btn danger">Clear all stats</button>
+    </div>
+  </section>
+
+  <!-- ============ RULES ============ -->
+  <section id="screen-rules" class="screen hidden">
+    <h2>The rules, from zero</h2>
+    <p class="tips-src">Every level explained with worked examples. New here? Read top to bottom — Level 2 gets the deepest walkthrough.</p>
+    <div id="rules-body"></div>
+    <div class="menu-buttons"><button id="btn-rules-menu" class="big-btn ghost">Menu</button></div>
+  </section>
+
+  <!-- ============ TIPS ============ -->
+  <section id="screen-tips" class="screen hidden">
+    <h2>How to solve the Switch Challenge, fast</h2>
+    <p class="tips-src">Distilled from three public YouTube walkthroughs of the assessment (timestamps refer to them; the repo's <code>TIPS.md</code> / <code>MECHANICS.md</code> carry the full sourced notes).</p>
+    <div id="tips-body"></div>
+    <div class="menu-buttons"><button id="btn-tips-menu" class="big-btn ghost">Menu</button></div>
+  </section>
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
