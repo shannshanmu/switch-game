@@ -1,8 +1,9 @@
-<!-- state: 2db509175f17130dfcbaeab9807bcb5d87b2b1e0-8db95c836cc3252da017c173daad8a76543a9537 -->
+<!-- state: 6db37d68dfde96859cd55e5aac316a69dcfa5ecb-da39a3ee5e6b4b0d3255bfef95601890afd80709 -->
 
 # Progress
 
-- No active feature/bugfix task in this repo right now.
-- Last session activity was unrelated to repo code: removed the `claude-video` marketplace and its `watch` plugin from the global Claude Code plugin config (not a repo change).
-- `.claude/settings.json` is untracked local config — not yet reviewed/committed; leave as-is unless asked.
-- Next step: no task queued — wait for user direction on what to build/fix in switch-game.
+- No active feature/bugfix task in this repo right now — last work was housekeeping, not code.
+- Claude GitHub App is installed on shannshanmu/switch-game (via `/install-github-app`, required `gh auth refresh -h github.com -s repo,workflow` first). No `.github/workflows/claude.yml` exists yet — install only granted app permissions, didn't scaffold a workflow file.
+- Committed & pushed (6db37d6): 3 reference .mp4 videos (~58-60MB each, switch-challenge card-trick tutorials), `.claude/settings.json` (local config, intentionally committed per user), and this PROGRESS.md.
+- GitHub warned the videos exceed its recommended 50MB/file limit — pushed anyway per user choice (no Git LFS). Worth revisiting if more/larger videos get added.
+- Next step: none queued — waiting on user direction (possibly adding the Claude Actions workflow file next, if that's wanted).
