@@ -28,8 +28,9 @@
     <div class="menu-buttons">
       <button id="btn-practice" class="big-btn">Practice <span class="btn-sub">untimed · instant feedback</span></button>
       <button id="btn-test" class="big-btn primary">Test <span class="btn-sub">6:00 · adaptive · report at the end</span></button>
+      <button id="btn-rules" class="big-btn ghost">Rules — how a question works</button>
       <button id="btn-stats" class="big-btn ghost">My stats</button>
-      <button id="btn-tips" class="big-btn ghost">How to solve it — tips from the videos</button>
+      <button id="btn-tips" class="big-btn ghost">Tips — solve it faster</button>
     </div>
     <div class="practice-tier-row" id="practice-tier-row">
       <span>Practice difficulty:</span>
@@ -73,10 +74,18 @@
     </div>
   </section>
 
+  <!-- ============ RULES ============ -->
+  <section id="screen-rules" class="screen hidden">
+    <h2>The rules, from zero</h2>
+    <p class="tips-src">Every level explained with worked examples. New here? Read top to bottom — Level 2 gets the deepest walkthrough.</p>
+    <div id="rules-body"></div>
+    <div class="menu-buttons"><button id="btn-rules-menu" class="big-btn ghost">Menu</button></div>
+  </section>
+
   <!-- ============ TIPS ============ -->
   <section id="screen-tips" class="screen hidden">
-    <h2>How to solve the Switch Challenge</h2>
-    <p class="tips-src">Distilled from the three reference videos in this repo (timestamps refer to them; see also <code>TIPS.md</code> / <code>MECHANICS.md</code>).</p>
+    <h2>How to solve the Switch Challenge, fast</h2>
+    <p class="tips-src">Distilled from three public YouTube walkthroughs of the assessment (timestamps refer to them; the repo's <code>TIPS.md</code> / <code>MECHANICS.md</code> carry the full sourced notes).</p>
     <div id="tips-body"></div>
     <div class="menu-buttons"><button id="btn-tips-menu" class="big-btn ghost">Menu</button></div>
   </section>

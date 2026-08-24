@@ -16,9 +16,9 @@ export const TIPS_HTML = `
     <li><strong>6 minutes</strong>, solve as many as possible, <strong>adaptive</strong> difficulty.</li>
     <li>Always 4 symbols and always 3 codes per unsolved row; difficulty grows by <strong>stacking operators</strong> (up to 3 rows) and by which row is unknown.</li>
     <li>There are <strong>7 question types</strong>: single row; two rows with the given ("mandatory") operator on top or bottom; two rows with both unknown; three rows with the unknown first, middle ("sandwich") or last.</li>
-    <li>Used by AON (smartPredict / cut-e) clients including <strong>BNP Paribas</strong> and <strong>P&amp;G</strong>; at P&amp;G it appears alongside the Digit and Grid/Shape challenges.</li>
+    <li>At <strong>P&amp;G</strong> it appears alongside the Digit and Shape challenges (on-screen list in the P&amp;G video, 00:20). It's an AON (smartPredict / cut-e) test used by many employers — <strong>BNP Paribas</strong> among them per prep guides, though no video names it on screen.</li>
   </ul>
-  <p class="ts">"FASTEST Solving Method" 01:20 (facts slide), 33:20 (study-guide page: "There are seven question types").</p>
+  <p class="ts">"FASTEST Solving Method" 01:20 (facts slide); type count from its study-guide page at 33:20 ("There are seven question types"), the seven-way breakdown from its taxonomy slides at 03:10–04:55.</p>
 </div>
 
 <div class="tip-block">
@@ -49,7 +49,7 @@ export const TIPS_HTML = `
   position <code>given[k]</code>. Then solve top → intermediate as a single-row question.
   Equivalently, stay in digits and compose each option with the given code, comparing against the
   total operator.</p>
-  <p class="ts">"How to Ace P&amp;G" Ex6–Ex10 (08:20–12:20); "FASTEST Solving Method" Q2 17:00–20:10.</p>
+  <p class="ts">"How to Ace P&amp;G" Ex6, Ex7, Ex9, Ex10 (07:50–12:20); "FASTEST Solving Method" Q2 17:00–20:10.</p>
 </div>
 
 <div class="tip-block">
@@ -79,7 +79,7 @@ export const TIPS_HTML = `
     doesn't start any bottom option. Usually one pair survives after one or two digits.</li>
     <li><strong>Meet in the middle:</strong> decode the top candidates forward and the bottom candidates
     backward from the output; the pair sharing the same middle row is the answer (max 6 decodes
-    instead of brute-forcing all 9–12 combinations).</li>
+    instead of brute-forcing all 9 pairings — up to 12 decode steps, as the V1 counters show).</li>
   </ul>
   <p class="ts">"FASTEST Solving Method" Q5 28:50–33:15; "Switch Challenge EXPLAINED" 21:50–31:45.</p>
 </div>

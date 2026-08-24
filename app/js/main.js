@@ -4,11 +4,20 @@ import {
 } from './engine.js';
 import { recordSession, summary, clearStats } from './stats.js';
 import { TIPS_HTML } from './tips.js';
+import { symbolSvg, funnelSvg, tileRow } from './render.js';
+import { rulesHtml } from './rules.js';
 
 const TEST_SECONDS = 6 * 60;
 
 const $ = (id) => document.getElementById(id);
-const screens = ['menu', 'game', 'report', 'stats', 'tips'];
+const screens = ['menu', 'game', 'report', 'stats', 'tips', 'rules'];
+
+// Escape anything interpolated into innerHTML that ever passed through
+// localStorage — on GitHub Pages all of a user's project sites share one
+// origin, so stored data is not trustworthy.
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
 
 const state = {
   screen: 'menu',
@@ -24,45 +33,51 @@ const state = {
   testEndsAt: 0,
   timerId: null,
   sessionStart: 0,
+  lastAdvanceAt: 0,   // guards against double-taps answering the next question
+  screenShownAt: 0,   // guards against Escapes leaking across screen swaps
+  lastClickAt: 0,     // with the three below: same-spot tap-through guard
+  lastClickX: 0,
+  lastClickY: 0,
+  tapGuardUntil: 0,
 };
-
-/* ---------------- svg helpers ---------------- */
-
-function symbolSvg(sym) {
-  const c = sym.color;
-  const shapes = {
-    circle: `<circle cx="18" cy="18" r="14" fill="${c}"/>`,
-    cross: `<path d="M13 4h10v9h9v10h-9v9H13v-9H4V13h9z" fill="${c}"/>`,
-    square: `<rect x="5" y="5" width="26" height="26" fill="${c}"/>`,
-    triangle: `<path d="M18 4 33 32H3z" fill="${c}"/>`,
-    diamond: `<path d="M18 3 33 18 18 33 3 18z" fill="${c}"/>`,
-    star: `<path d="M18 3l4.4 9.4 10.3 1.2-7.6 7 2 10.1L18 25.6l-9.1 5.1 2-10.1-7.6-7 10.3-1.2z" fill="${c}"/>`,
-  };
-  return `<svg viewBox="0 0 36 36" role="img" aria-label="${sym.label}">${shapes[sym.id]}</svg>`;
-}
-
-function funnelSvg(flip = false) {
-  const pts = flip ? '30,0 190,0 220,26 0,26' : '0,0 220,0 190,26 30,26';
-  return `<svg class="funnel" width="220" height="26" viewBox="0 0 220 26" aria-hidden="true">
-    <polygon points="${pts}" fill="#1d7484" opacity=".88"/></svg>`;
-}
-
-function tileRow(symbols, small = false) {
-  return `<div class="symbol-row${small ? ' small' : ''}">${
-    symbols.map((s) => `<div class="tile">${symbolSvg(s)}</div>`).join('')}</div>`;
-}
 
 /* ---------------- screen switching ---------------- */
 
 function show(name) {
   state.screen = name;
+  state.screenShownAt = Date.now();
+  // A double-tap on one spot must not activate whatever the next screen
+  // renders there (e.g. "End session" -> a report button). If a click caused
+  // this swap, swallow follow-up clicks near the same coordinates briefly;
+  // clicks elsewhere (a deliberate next action) pass through untouched.
+  if (Date.now() - state.lastClickAt < 350) {
+    state.tapGuardUntil = Date.now() + 350;
+    state.tapGuardX = state.lastClickX;
+    state.tapGuardY = state.lastClickY;
+  }
   for (const s of screens) $(`screen-${s}`).classList.toggle('hidden', s !== name);
   const inGame = name === 'game';
   $('level-badge').classList.toggle('hidden', !inGame);
   $('qcount').classList.toggle('hidden', !inGame);
   $('clock').classList.toggle('hidden', !(inGame && state.mode === 'test'));
+  // The countdown bar only means something in a timed test.
+  $('timerbar').classList.toggle('hidden', !(inGame && state.mode === 'test'));
   if (!inGame) setTimerBar(1);
 }
+
+document.addEventListener('click', (e) => {
+  const now = Date.now();
+  if (now < state.tapGuardUntil
+      && Math.abs(e.clientX - state.tapGuardX) < 24
+      && Math.abs(e.clientY - state.tapGuardY) < 24) {
+    e.stopPropagation();
+    e.preventDefault();
+    return;
+  }
+  state.lastClickAt = now;
+  state.lastClickX = e.clientX;
+  state.lastClickY = e.clientY;
+}, true);
 
 function setTimerBar(frac) {
   const fill = $('timerbar-fill');
@@ -106,6 +121,7 @@ function nextQuestion() {
   state.picks = [];
   state.answered = false;
   state.qStart = Date.now();
+  state.lastAdvanceAt = Date.now();
   $('level-num').textContent = String(state.tier);
   $('qcount').textContent = `Q${state.results.length + 1}`;
   $('feedback').classList.add('hidden');
@@ -125,10 +141,14 @@ function renderPuzzle() {
     }
     const rowIdx = unknownIdx++;
     const isActive = rowIdx === state.picks.length && !state.answered;
+    // Rows beyond the active one are visibly locked (tier 4): a silent dead
+    // tap on a phone reads as a broken app.
+    const isLocked = rowIdx > state.picks.length && !state.answered;
     const cards = step.options.map((opt, i) => {
       const picked = state.picks[rowIdx] === i;
       const showKeys = isActive;
-      return `<button class="op-card${picked ? ' selected' : ''}" data-row="${rowIdx}" data-opt="${i}">
+      return `<button class="op-card${picked ? ' selected' : ''}${isLocked ? ' locked' : ''}"
+        data-row="${rowIdx}" data-opt="${i}" ${isLocked ? 'disabled' : ''}>
         ${showKeys ? `<span class="key-hint">${i + 1}</span>` : ''}${permToString(opt)}</button>`;
     }).join('');
     const label = unknowns.length > 1 ? `<span class="row-label">row ${rowIdx + 1}</span>` : '<span class="row-label"></span>';
@@ -150,6 +170,10 @@ function renderPuzzle() {
 
 function pickOption(row, opt) {
   if (state.answered) return;
+  // In test mode the next question renders in the same tick as the answer, so
+  // the second half of a double-tap would land on a question the player never
+  // saw. No human reads a puzzle in 300ms.
+  if (Date.now() - state.lastAdvanceAt < 300) return;
   const unknowns = unknownSteps(state.question);
   if (row !== state.picks.length) {
     // Allow re-picking an earlier row before submission: truncate and retake.
@@ -259,15 +283,17 @@ function endSession() {
     maxTier: Math.max(...results.map((r) => r.tier)),
     perTier,
   };
+  // Read the previous best BEFORE recording, or "best so far" always includes
+  // the session being reported.
+  const prevBest = state.mode === 'test' ? summary().best : null;
   recordSession(session);
-  renderReport(session);
+  renderReport(session, prevBest);
   show('report');
 }
 
-function renderReport(session) {
+function renderReport(session, prevBest) {
   const acc = session.attempted ? Math.round((session.correct / session.attempted) * 100) : 0;
   const band = percentileBand(session.correct, session.attempted);
-  const prevBest = summary().best;
   const cards = [
     { num: session.score, lbl: 'score (correct answers)' },
     { num: `${session.correct}/${session.attempted}`, lbl: 'correct / attempted' },
@@ -276,16 +302,21 @@ function renderReport(session) {
     { num: session.maxTier, lbl: 'highest level reached' },
   ];
   const tierRows = Object.entries(session.perTier).map(([t, agg]) => {
-    const tl = TIERS.find((x) => x.id === Number(t))?.label ?? t;
-    return `<tr><td>L${t} · ${tl}</td><td>${agg.correct}/${agg.attempted}</td></tr>`;
+    const tl = TIERS.find((x) => x.id === Number(t))?.label ?? '';
+    return `<tr><td>L${esc(t)} · ${esc(tl)}</td><td>${esc(agg.correct)}/${esc(agg.attempted)}</td></tr>`;
   }).join('');
   const bandHtml = state.mode === 'test'
     ? `<div class="stat-card"><div class="num band">${band.band}</div>
        <div class="lbl">estimated percentile — ${band.label}${band.band === '80th–90th' || band.band === '90th+' ? ' 🎯' : ''}</div></div>`
     : '';
-  const bestNote = state.mode === 'test' && prevBest
-    ? `<p class="muted">Best test score so far: <strong>${prevBest.score}</strong>${session.score >= prevBest.score ? ' — new best! 🏆' : ''}</p>`
-    : '';
+  const prevScore = Number(prevBest?.score);
+  let bestNote = '';
+  if (state.mode === 'test') {
+    if (!Number.isFinite(prevScore)) bestNote = '<p class="muted">First recorded test — this is your baseline. 🏁</p>';
+    else if (session.score > prevScore) bestNote = `<p class="muted">Beats your previous best of <strong>${esc(prevScore)}</strong> — new best! 🏆</p>`;
+    else if (session.score === prevScore) bestNote = `<p class="muted">Ties your best score of <strong>${esc(prevScore)}</strong>.</p>`;
+    else bestNote = `<p class="muted">Best test score so far: <strong>${esc(prevScore)}</strong>.</p>`;
+  }
   $('report-body').innerHTML = `
     <div class="report-grid">${cards.map((c) => `<div class="stat-card"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`).join('')}${bandHtml}</div>
     <table class="tier-table"><tr><th>Level</th><th>Correct</th></tr>${tierRows}</table>
@@ -300,22 +331,26 @@ function renderStats() {
     return;
   }
   const best = s.best;
+  const bestScore = Number(best?.score);
+  const bestAcc = Number(best?.correct) / Number(best?.attempted);
   const trendBars = s.trend.map((t) => {
     const h = Math.max(6, Math.round(t.accuracy * 66));
+    const when = new Date(t.date);
+    const dateLabel = Number.isNaN(when.getTime()) ? '?' : when.toLocaleDateString();
     return `<div class="bar${t.mode === 'practice' ? ' practice' : ''}" style="height:${h}px"
-      title="${new Date(t.date).toLocaleDateString()} — ${Math.round(t.accuracy * 100)}% (${t.mode})"></div>`;
+      title="${esc(dateLabel)} — ${Math.round(t.accuracy * 100)}% (${esc(t.mode)})"></div>`;
   }).join('');
   const tierRows = Object.entries(s.tierAgg).map(([t, agg]) => {
-    const tl = TIERS.find((x) => x.id === Number(t))?.label ?? t;
+    const tl = TIERS.find((x) => x.id === Number(t))?.label ?? '';
     const pct = agg.attempted ? Math.round((agg.correct / agg.attempted) * 100) : 0;
     const weak = s.weakest && s.weakest.tier === Number(t) ? ' ⚠️ weakest' : '';
-    return `<tr><td>L${t} · ${tl}</td><td>${agg.correct}/${agg.attempted}</td><td>${pct}%${weak}</td></tr>`;
+    return `<tr><td>L${esc(t)} · ${esc(tl)}</td><td>${esc(agg.correct)}/${esc(agg.attempted)}</td><td>${pct}%${weak}</td></tr>`;
   }).join('');
   $('stats-body').innerHTML = `
     <div class="report-grid">
       <div class="stat-card"><div class="num">${s.totalSessions}</div><div class="lbl">sessions played</div></div>
-      <div class="stat-card"><div class="num">${best ? best.score : '—'}</div><div class="lbl">best test score</div></div>
-      <div class="stat-card"><div class="num">${best ? `${Math.round((best.correct / best.attempted) * 100)}%` : '—'}</div><div class="lbl">accuracy on best test</div></div>
+      <div class="stat-card"><div class="num">${Number.isFinite(bestScore) ? esc(bestScore) : '—'}</div><div class="lbl">best test score</div></div>
+      <div class="stat-card"><div class="num">${Number.isFinite(bestAcc) ? `${Math.round(bestAcc * 100)}%` : '—'}</div><div class="lbl">accuracy on best test</div></div>
     </div>
     <h3 style="color:#1d7484;margin:8px 0 2px">Accuracy — last ${s.trend.length} sessions</h3>
     <div class="trend">${trendBars}</div>
@@ -330,6 +365,8 @@ $('btn-practice').addEventListener('click', () => startSession('practice'));
 $('btn-test').addEventListener('click', () => startSession('test'));
 $('btn-stats').addEventListener('click', () => { renderStats(); show('stats'); });
 $('btn-tips').addEventListener('click', () => { $('tips-body').innerHTML = TIPS_HTML; show('tips'); });
+$('btn-rules').addEventListener('click', () => { $('rules-body').innerHTML = rulesHtml(); show('rules'); });
+$('btn-rules-menu').addEventListener('click', () => show('menu'));
 $('btn-quit').addEventListener('click', endSession);
 $('btn-next').addEventListener('click', nextQuestion);
 $('btn-show-answer').addEventListener('click', () => { if (!state.answered) submit(true); });
@@ -342,6 +379,9 @@ $('btn-clear-stats').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
+  // Ctrl/Cmd/Alt combos are browser shortcuts (e.g. Cmd+1 = first tab), not
+  // answers.
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (state.screen === 'game') {
     if (e.key >= '1' && e.key <= '3' && !state.answered) {
       const unknowns = unknownSteps(state.question);
@@ -357,10 +397,12 @@ document.addEventListener('keydown', (e) => {
     } else if ((e.key === 'Enter' || e.key === ' ') && state.answered) {
       nextQuestion();
       e.preventDefault();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' && !e.repeat) {
       endSession();
     }
-  } else if (state.screen !== 'menu' && e.key === 'Escape') {
+  } else if (state.screen !== 'menu' && e.key === 'Escape' && !e.repeat
+      && Date.now() - state.screenShownAt > 400) {
+    // The second Escape of a quick double-press must not blow past the report.
     show('menu');
   }
 });

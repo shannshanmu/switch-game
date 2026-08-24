@@ -9,8 +9,8 @@
 //   tier 1: single switch, pick 1 of 3 codes
 //   tier 2: two chained switches, one operator given (before or after the
 //           unknown), pick the unknown from 3 codes
-//   tier 3: three chained switches, two operators given, unknown is last or
-//           middle, pick from 3 codes
+//   tier 3: three chained switches, two operators given, unknown is first,
+//           middle or last (question types 6, 7, 5), pick from 3 codes
 //   tier 4: two chained switches, BOTH unknown — two rows sharing one set of
 //           3 codes, pick one code per row ("most difficult levels" video)
 
@@ -58,14 +58,25 @@ const IDENTITY = [1, 2, 3, 4];
 
 function randomPermutation(rng, { allowIdentity = false } = {}) {
   let p;
+  let guard = 0;
   do {
     p = shuffled(IDENTITY, rng);
-  } while (!allowIdentity && permToString(p) === '1234');
+  } while (!allowIdentity && permToString(p) === '1234' && guard++ < 50);
+  // Degenerate-rng backstop: a constant rng >= 0.75 never shuffles, which
+  // would otherwise loop forever here.
+  if (!allowIdentity && permToString(p) === '1234') p = [2, 3, 4, 1];
   return p;
 }
 
-function permsEqual(a, b) {
-  return a.every((v, i) => v === b[i]);
+// All 24 permutations of 1-4, for exhaustion backstops.
+function allPermutations() {
+  const out = [];
+  const rec = (rest, acc) => {
+    if (!rest.length) { out.push(acc); return; }
+    rest.forEach((v, i) => rec([...rest.slice(0, i), ...rest.slice(i + 1)], [...acc, v]));
+  };
+  rec([1, 2, 3, 4], []);
+  return out;
 }
 
 // compose(a, b) = "a then b" as a single permutation: out[k] = in[c[k]].
@@ -73,38 +84,31 @@ export function compose(a, b) {
   return b.map((src) => a[src - 1]);
 }
 
-// Near-miss distractors: transpositions of the correct code (differ in exactly
-// two digits), topped up with 3-cycles (differ in exactly three). Mirrors the
-// close option sets seen in the videos (e.g. 2341 / 2314 / 3241).
-function nearMissDistractors(correct, count, rng, forbidden = new Set()) {
-  const out = [];
-  const seen = new Set([permToString(correct), '1234', ...forbidden]);
-  const pairs = shuffled(
-    [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]],
-    rng,
-  );
-  for (const [i, j] of pairs) {
-    if (out.length >= count) break;
-    const p = correct.slice();
-    [p[i], p[j]] = [p[j], p[i]];
-    const key = permToString(p);
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(p);
-    }
+// Identity + all transpositions + all 3-cycles: the permutations that move at
+// most three positions. Pairwise distances inside a cloud drawn from this
+// pool are 2-4 digits, mirroring the close option sets in the videos
+// (e.g. 2314 / 2341 / 3241).
+const NEAR_POOL = allPermutations().filter(
+  (p) => p.filter((v, i) => v !== i + 1).length <= 3,
+);
+
+// An exchangeable option set: three distinct near-miss codes forming a cloud
+// around a hidden center. Crucially, WHICH member is the correct answer is
+// decided uniformly at random afterwards — so no statistic of the set alone
+// (parity, digit overlap, pairwise distances) can identify the answer. The
+// pre-review generator failed this: its distractors were always
+// transpositions of the correct code, making the answer the unique parity
+// odd-one-out — a 100% shortcut. See the anti-heuristic regression tests.
+function optionSet(rng) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const h = shuffled(IDENTITY, rng);
+    const gs = shuffled(NEAR_POOL, rng).slice(0, OPTION_COUNT);
+    const opts = gs.map((g) => compose(h, g));
+    const keys = new Set(opts.map(permToString));
+    if (keys.size === OPTION_COUNT && !keys.has('1234')) return opts;
   }
-  let guard = 0;
-  while (out.length < count && guard++ < 100) {
-    const [i, j, k] = shuffled([0, 1, 2, 3], rng).slice(0, 3);
-    const p = correct.slice();
-    [p[i], p[j], p[k]] = [p[j], p[k], p[i]];
-    const key = permToString(p);
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(p);
-    }
-  }
-  return out;
+  // Degenerate-rng backstop.
+  return [[2, 1, 3, 4], [2, 3, 1, 4], [2, 1, 4, 3]];
 }
 
 function pickSymbols(rng) {
@@ -143,57 +147,83 @@ export function generateQuestion(tierId, rng = Math.random) {
   if (tier.kind === 'chain2-given') unknownAt = randInt(2, rng);
   if (tier.kind === 'chain3-given') unknownAt = randInt(3, rng);
 
+  // Options first, answer designated uniformly afterwards (see optionSet).
+  const options = optionSet(rng);
+  const answerIndex = randInt(OPTION_COUNT, rng);
+  const correct = options[answerIndex];
+
   let perms;
   let guard = 0;
   do {
-    perms = Array.from({ length: chainLen }, () => randomPermutation(rng));
+    perms = Array.from({ length: chainLen }, (v, i) => (
+      i === unknownAt ? correct : randomPermutation(rng)
+    ));
     // Avoid a chain that composes to the identity (output identical to input
     // reads as a broken question).
   } while (chainLen > 1 && permToString(perms.reduce(compose)) === '1234' && guard++ < 50);
+  if (chainLen > 1 && permToString(perms.reduce(compose)) === '1234') {
+    // Degenerate-rng backstop: altering one GIVEN operator necessarily
+    // changes the total (composition is injective per argument) without
+    // touching the correct option.
+    const fixAt = unknownAt === 0 ? 1 : 0;
+    const g = perms[fixAt].slice();
+    [g[0], g[1]] = [g[1], g[0]];
+    perms[fixAt] = permToString(g) === '1234' ? [2, 3, 4, 1] : g;
+  }
 
   const output = applyChain(perms, symbols);
-  const correct = perms[unknownAt];
-  const options = shuffled(
-    [correct, ...nearMissDistractors(correct, OPTION_COUNT - 1, rng)],
-    rng,
-  );
   const steps = perms.map((p, i) => (
-    i === unknownAt
-      ? { options, answerIndex: options.findIndex((o) => permsEqual(o, correct)) }
-      : { given: p }
+    i === unknownAt ? { options, answerIndex } : { given: p }
   ));
   return { tier: tier.id, kind: tier.kind, symbols, output, steps };
 }
 
 // Tier 4: both operators unknown; the two rows share one set of 3 codes (as in
 // the "most difficult levels" video). The player picks one code per row, and
-// exactly one of the 9 ordered pairs must produce the output.
+// exactly one of the 9 ordered pairs must produce the output. The answer pair
+// is drawn uniformly from every well-posed pair of the set, so the set again
+// carries no structural cue about the answer beyond the uniqueness the format
+// requires.
 function generateChain2Open(tier, symbols, rng) {
   for (let attempt = 0; attempt < 200; attempt++) {
-    const a = randomPermutation(rng);
-    const b = randomPermutation(rng);
-    if (permToString(compose(a, b)) === '1234') continue;
-    const extras = nearMissDistractors(rng() < 0.5 ? a : b, 1, rng,
-      new Set([permToString(a), permToString(b)]));
-    const set = shuffled([a, b, ...extras], rng);
-    // Uniqueness across all ordered pairs from the shared set.
-    const target = permToString(compose(a, b));
-    let matches = 0;
-    for (const p of set) {
-      for (const q of set) {
-        if (permToString(compose(p, q)) === target) matches++;
+    const set = optionSet(rng);
+    const comps = [];
+    for (let i = 0; i < set.length; i++) {
+      for (let j = 0; j < set.length; j++) {
+        comps.push({ i, j, key: permToString(compose(set[i], set[j])) });
       }
     }
-    if (matches !== 1) continue;
-    const output = applyChain([a, b], symbols);
-    const row1 = { options: set, answerIndex: set.findIndex((p) => permsEqual(p, a)) };
-    const row2 = { options: set, answerIndex: set.findIndex((p) => permsEqual(p, b)) };
+    const counts = {};
+    for (const c of comps) counts[c.key] = (counts[c.key] || 0) + 1;
+    const cands = comps.filter((c) => counts[c.key] === 1 && c.key !== '1234');
+    if (!cands.length) continue;
+    const pick = cands[randInt(cands.length, rng)];
     return {
-      tier: tier.id, kind: tier.kind, symbols, output, steps: [row1, row2],
+      tier: tier.id,
+      kind: tier.kind,
+      symbols,
+      output: applyChain([set[pick.i], set[pick.j]], symbols),
+      steps: [
+        { options: set, answerIndex: pick.i },
+        { options: set, answerIndex: pick.j },
+      ],
     };
   }
-  // Practically unreachable; fall back to a tier-2 question rather than loop.
-  return generateQuestion(2, rng);
+  // Degenerate-rng backstop: a fixed configuration verified to have a unique
+  // answer pair (2314 then 1243 -> total 2341; all other 8 pairs miss).
+  const a = [2, 3, 1, 4];
+  const b = [1, 2, 4, 3];
+  const set = [a, b, [3, 2, 1, 4]];
+  return {
+    tier: tier.id,
+    kind: tier.kind,
+    symbols,
+    output: applyChain([a, b], symbols),
+    steps: [
+      { options: set, answerIndex: 0 },
+      { options: set, answerIndex: 1 },
+    ],
+  };
 }
 
 export function unknownSteps(question) {
@@ -218,12 +248,22 @@ export function nextTier(current, streak, wasCorrect) {
 
 // Rough percentile band from the 6-minute test, calibrated against
 // prep-guide guidance (see MECHANICS.md — this is an estimate, not AON's
-// real adaptive-theta scoring).
+// real adaptive-theta scoring). Each band has a count+accuracy gate plus a
+// higher-count escape at moderate accuracy, so a strictly better session
+// (more correct in the same 6 minutes) never reports a lower band.
 export function percentileBand(correct, attempted) {
-  const accuracy = attempted ? correct / attempted : 0;
-  if (correct >= 14 && accuracy >= 0.9) return { band: '90th+', label: 'Outstanding' };
-  if (correct >= 11 && accuracy >= 0.85) return { band: '80th–90th', label: 'Excellent' };
-  if (correct >= 8 && accuracy >= 0.75) return { band: '60th–80th', label: 'Good' };
-  if (correct >= 5 && accuracy >= 0.6) return { band: '40th–60th', label: 'Average' };
+  const acc = attempted ? correct / attempted : 0;
+  if ((correct >= 14 && acc >= 0.85) || (correct >= 18 && acc >= 0.7)) {
+    return { band: '90th+', label: 'Outstanding' };
+  }
+  if ((correct >= 11 && acc >= 0.8) || (correct >= 14 && acc >= 0.65)) {
+    return { band: '80th–90th', label: 'Excellent' };
+  }
+  if ((correct >= 8 && acc >= 0.7) || (correct >= 10 && acc >= 0.55)) {
+    return { band: '60th–80th', label: 'Good' };
+  }
+  if ((correct >= 5 && acc >= 0.55) || correct >= 7) {
+    return { band: '40th–60th', label: 'Average' };
+  }
   return { band: '<40th', label: 'Keep practicing' };
 }

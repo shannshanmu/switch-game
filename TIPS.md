@@ -16,14 +16,14 @@ Digit *k* of a code = **which top-row position feeds output slot *k***.
 
 ## 1. The universal first step — the Total Operator (V3 05:00–12:30)
 
-Under each **bottom** symbol write the position where it sits in the **top** row. Those four digits, read left to right, are the *total operator* — the single code equivalent to the whole chain. On a single-row question it **is** the answer. V3's motto: **"Use ONLY the numbers to solve"** — it's "Simple & Fast", "Reduces Mental Overload", "Methodical". V1 teaches the same trick as "derive the code, then match" (07:40–09:55); V2 demonstrates it in every example by labeling the bottom row (e.g. labels `1 3 4 2` → answer `1342`, Ex1 at 03:30).
+Under each **bottom** symbol write the position where it sits in the **top** row. Those four digits, read left to right, are the *total operator* — the single code equivalent to the whole chain. On a single-row question it **is** the answer. V3's motto: **"Use ONLY the numbers to solve"** — it's "Simple & Fast", "Reduces Mental Overload", "Methodical". V1 teaches the same trick as "derive the code, then match" (07:40–09:55); V2 demonstrates it in its single-row examples by labeling the bottom row (e.g. labels `1 3 4 2` → answer `1342`, Ex1 at 03:30) — in V2's chained items the same labeling is applied against the intermediate row instead.
 
 ## 2. Two rows, given operator on TOP (V2 Ex4–5, V3 Q1 12:50–16:55)
 
 - Forward route (V2): apply the given code to the top row, write the intermediate row down, then solve the remaining single switch.
 - Digits-only route (V3, faster): **backtrack** — for each digit of the total operator, find *where* that digit sits inside the given code; those positions in order spell the answer. (V3 14:30–15:50: given `3142`, total `2413` → answer `4321`.)
 
-## 3. Two rows, given operator on BOTTOM (V2 Ex6–10, V3 Q2 17:00–20:10)
+## 3. Two rows, given operator on BOTTOM (V2 Ex6, Ex7, Ex9, Ex10, V3 Q2 17:00–20:10)
 
 - Backward route (V2): reconstruct the intermediate row from the bottom (bottom slot *k* came from intermediate position `given[k]`), then solve top → intermediate.
 - Digits-only route (V3): compose each option with the given code and compare to the total. Composition rule, digit by digit: `composite[k] = first code's digit at position (second code's digit k)`; e.g. `2143` then `2314` compose to `1423` (V3 08:00–08:30).
@@ -55,5 +55,5 @@ The three options usually differ at just **one digit position**. Find it and com
 
 - **6 minutes, solve as many as possible, adaptive** (V3 01:20).
 - **Seven question types** (study-guide page, V3 33:20) — all implemented in this clone, see `MECHANICS.md` §2.
-- At P&G the Switch Challenge appears alongside the **Digit** and **Grid/Shape** challenges (V2 00:20); the same AON (cut-e / smartPredict) test is used by BNP Paribas and many other employers.
+- At P&G the Switch Challenge appears alongside the **Digit** and **Shape** challenges (V2's on-screen list at 00:20); the same AON (cut-e / smartPredict) test is used by many employers — BNP Paribas among them per prep guides, though no video names it on screen.
 - Prep guides treat ~80th percentile as the "excellent" bar — the clone's Test-mode report estimates a band for you after each 6-minute run.

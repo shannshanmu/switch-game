@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Deploys from main only: the github-pages environment rejects other branches,
+# and a feature-branch deploy could silently roll back a newer main deploy.
+# Use workflow_dispatch for a one-off manual run.
 on:
   push:
-    branches: [main, claude/switch-challenge-clone-opphct]
+    branches: [main]
     paths: ['app/**', '.github/workflows/deploy-pages.yml']
   workflow_dispatch:
 
@@ -13,7 +16,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,32 +25,46 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Sparse checkout: the repo carries ~170MB of reference videos the deploy
+      # never needs.
       - uses: actions/checkout@v4
-      # Pages cannot be enabled from a workflow on this repo (private repo;
-      # GITHUB_TOKEN may not create the Pages site). Probe for it and skip
-      # gracefully instead of failing every push until it is switched on in
-      # Settings -> Pages -> Source: "GitHub Actions".
-      - name: Check whether Pages is enabled
+        with:
+          sparse-checkout: app
+      # Fail loudly on anything except the one legitimate skip case (Pages not
+      # yet enabled -> 404). A transient API error must not produce a green
+      # run that silently deployed nothing.
+      - name: Verify Pages is enabled with the GitHub Actions source
         id: pages-check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          status=$(curl -s -o /dev/null -w "%{http_code}" \
+          resp=$(curl -sS -w '\n%{http_code}' \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages")
-          echo "status=$status" >> "$GITHUB_OUTPUT"
+            "https://api.github.com/repos/${{ github.repository }}/pages") || {
+              echo "::error::Pages API request failed"; exit 1; }
+          status=$(echo "$resp" | tail -n1)
+          body=$(echo "$resp" | head -n -1)
           if [ "$status" = "200" ]; then
-            echo "Pages is enabled — deploying."
+            build_type=$(echo "$body" | jq -r '.build_type')
+            if [ "$build_type" != "workflow" ]; then
+              echo "::error::Pages is enabled but its source is '$build_type'. Set Settings -> Pages -> Source to 'GitHub Actions'."
+              exit 1
+            fi
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" = "404" ]; then
+            echo "::warning title=Pages not enabled::GitHub Pages is not enabled for this repository. Enable it under Settings -> Pages -> Source: 'GitHub Actions', then re-run this workflow."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice title=Pages not enabled::GitHub Pages is not enabled for this repository (API returned $status). Enable it under Settings -> Pages -> Source: 'GitHub Actions' (requires a plan that supports Pages on private repos, or a public repo), then re-run this workflow."
+            echo "::error::Pages API returned unexpected status $status"
+            exit 1
           fi
       - uses: actions/configure-pages@v5
-        if: steps.pages-check.outputs.status == '200'
+        if: steps.pages-check.outputs.deploy == 'true'
       - uses: actions/upload-pages-artifact@v3
-        if: steps.pages-check.outputs.status == '200'
+        if: steps.pages-check.outputs.deploy == 'true'
         with:
           path: app
       - id: deployment
-        if: steps.pages-check.outputs.status == '200'
+        if: steps.pages-check.outputs.deploy == 'true'
         uses: actions/deploy-pages@v4
