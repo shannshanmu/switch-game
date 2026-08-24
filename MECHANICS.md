@@ -63,10 +63,10 @@ Constants across every example in every video:
 ## 4. UI reference (for the clone's styling)
 
 - Near-white background with pastel diamond/triangle decorations (V1, V3 real-UI thumbnail).
-- White symbol tiles with soft drop shadows; teal funnels (≈ `#1d7484`); pale-teal rounded frame around the operator stages (V1).
-- White option cards with large letter-spaced digits; given/mandatory operators on dark cards (navy in V2, purple in V3).
+- White symbol tiles with soft drop shadows; white option cards with large letter-spaced digits.
 - Green header bar with level badge and progress bar (V2 real screenshot).
-- Symbol colors ≈ circle `#3e8e58`, cross `#3d78c9`, square `#e2694e`, triangle `#f0b400` (sampled from V1 frames).
+- Older era (videos): teal funnels (≈ `#1d7484`), pale-teal frame (V1); given operators on dark cards (navy in V2, purple in V3); symbol colors ≈ circle `#3e8e58`, cross `#3d78c9`, square `#e2694e`, triangle `#f0b400` (sampled from V1 frames).
+- **Current era (user screenshots, §6b — what the clone renders)**: grey pipe manifold, option ring, in-line given plaques, green padlock confirm, star/play/hexagon/diamond symbols.
 
 ## 5. Companies & context
 
@@ -82,6 +82,19 @@ Constants across every example in every video:
 - **Re-check** each answer by reapplying the digits to the symbols (V3, four times).
 
 ---
+
+## 6b. Current-UI evidence — user-supplied screenshots (2026-08-24)
+
+After the video analysis, the user provided screenshots of the **current** assessment UI, which supersede the videos where they differ:
+
+- **Pipe-manifold layout**: grey plumbing; the three selectable codes sit on a **horizontal pipe ring** around a central vertical pipe (left / centre / right plaques), not on a stacked rail. Top and bottom funnels are grey.
+- **Given operators are inserted in-line on the central pipe** at the junctions above/below the ring — they are plaques in the flow, not a separate labeled row.
+- **A green confirm button with a padlock** sits under the output row: picking a code does not submit; the button does (it reads as locked until a code is chosen).
+- **Modern symbol set**: blue star, purple triangle (play), yellow hexagon, pink diamond — different from the videos' circle/cross/square/triangle.
+- The screenshot's own puzzle re-verifies the operator semantics: top `[star, play, hexagon, diamond]`, options `3421/3412/3124`, bottom `[hexagon, diamond, star, play]` → only `3412` works under `out[k] = in[digit_k]`.
+- A second screenshot (from a practice tool's settings panel) inspired the clone's Practice setup: Progressive vs Random exercise type, per-question-type checkboxes for all 7 types, and a configurable time limit with an "infinite" option.
+
+The clone renders this manifold layout (ring + in-line pipe plaques + padlock confirm) and defaults to the modern symbol set (~70%), with the videos' classic set and mixed sets for variety. A small "fixed" tag under pipe plaques appears in Practice mode only, as a training aid.
 
 ## 7. Video vs. the written spec (video wins)
 

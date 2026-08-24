@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-08-24 (evening) — Real-UI fidelity rework from user screenshots + practice config panel
+
+- User supplied screenshots of the **current** assessment: options sit on a horizontal **pipe ring**; given codes are plaques **inserted in-line on the central pipe**; a **green padlock confirm button** submits (picking alone doesn't); modern symbol set (blue star, purple play-triangle, yellow hexagon, pink diamond). Recorded as MECHANICS.md §6b (supersedes video evidence where they differ); the screenshot's own puzzle re-verified `out[k]=in[digit_k]`.
+- Rebuilt the game screen to the pipe-manifold layout + pick-then-confirm flow (Enter confirms; free pick order across rings; Backspace un-picks). "fixed" tags on pipe plaques are practice-only.
+- Added a **Practice setup panel** modeled on a settings screenshot the user shared: Progressive vs Random, per-question-type checkboxes (all 7 types, via new `generateQuestionOfType`), configurable time limit with infinite default; prefs persist per path.
+- Rules screen updated to the new layout language and now uses the screenshot's exact puzzle (3421/3412/3124 → 3412) as the Level-1 example.
+- All engine + smoke suites re-run green (61 UI checks incl. new confirm-flow, random-drill, timed-practice, and double-tap-on-confirm guards).
+
 ## 2026-08-24 (later) — Adversarial review consolidation, Rules screen, Pages deploy
 
 - **Four-agent adversarial review** (engine math, UI/mobile, docs-vs-evidence, deployment) + consolidation. Key fixes, all verified by extended regression tests:

@@ -1,6 +1,6 @@
 import {
-  generateQuestion, applyChain, permToString, unknownSteps, checkAnswer,
-  nextTier, percentileBand, TIERS,
+  generateQuestion, generateQuestionOfType, applyChain, permToString,
+  unknownSteps, checkAnswer, nextTier, percentileBand, TIERS, QUESTION_TYPES,
 } from './engine.js';
 import { recordSession, summary, clearStats } from './stats.js';
 import { TIPS_HTML } from './tips.js';
@@ -24,13 +24,16 @@ const state = {
   mode: null,           // 'practice' | 'test'
   tier: 1,
   streak: 0,
-  fixedTier: null,      // practice with a fixed tier, else null (auto-ramp)
+  practiceMode: 'progressive',  // 'progressive' | 'random'
+  practiceTypes: QUESTION_TYPES.map((t) => t.id),
   question: null,
-  picks: [],            // option index per unknown row, in order
+  picks: [],            // option index (or null) per unknown row, in order
   qStart: 0,
   results: [],          // {tier, correct, ms, revealed}
   answered: false,
-  testEndsAt: 0,
+  timed: false,
+  timerTotalMs: 0,
+  timedEndsAt: 0,
   timerId: null,
   sessionStart: 0,
   lastAdvanceAt: 0,   // guards against double-taps answering the next question
@@ -59,9 +62,10 @@ function show(name) {
   const inGame = name === 'game';
   $('level-badge').classList.toggle('hidden', !inGame);
   $('qcount').classList.toggle('hidden', !inGame);
-  $('clock').classList.toggle('hidden', !(inGame && state.mode === 'test'));
-  // The countdown bar only means something in a timed test.
-  $('timerbar').classList.toggle('hidden', !(inGame && state.mode === 'test'));
+  // The countdown only means something in a timed session (test, or practice
+  // with a time limit set).
+  $('clock').classList.toggle('hidden', !(inGame && state.timed));
+  $('timerbar').classList.toggle('hidden', !(inGame && state.timed));
   if (!inGame) setTimerBar(1);
 }
 
@@ -92,33 +96,51 @@ function startSession(mode) {
   document.querySelector('.brand-sub').textContent = `— ${mode}`;
   state.results = [];
   state.streak = 0;
+  state.tier = 1;
   state.sessionStart = Date.now();
+  state.timed = false;
   if (mode === 'practice') {
-    const v = document.querySelector('input[name="ptier"]:checked').value;
-    state.fixedTier = v === 'auto' ? null : Number(v);
-    state.tier = state.fixedTier ?? 1;
+    state.practiceMode = document.querySelector('input[name="pmode"]:checked').value;
+    state.practiceTypes = [...document.querySelectorAll('#setup-types input:checked')]
+      .map((el) => Number(el.value));
+    if (!state.practiceTypes.length) state.practiceTypes = QUESTION_TYPES.map((t) => t.id);
+    if (!$('p-infinite').checked) {
+      const mins = Math.max(0, Math.min(60, Number($('p-min').value) || 0));
+      const secs = Math.max(0, Math.min(59, Number($('p-sec').value) || 0));
+      const total = (mins * 60 + secs) * 1000;
+      if (total > 0) { state.timed = true; state.timerTotalMs = total; }
+    }
+    savePrefs();
   } else {
-    state.fixedTier = null;
-    state.tier = 1;
-    state.testEndsAt = Date.now() + TEST_SECONDS * 1000;
+    state.timed = true;
+    state.timerTotalMs = TEST_SECONDS * 1000;
+  }
+  if (state.timed) {
+    state.timedEndsAt = Date.now() + state.timerTotalMs;
     state.timerId = setInterval(tickTimer, 250);
-    tickTimer();
   }
   show('game');
+  if (state.timed) tickTimer();
   nextQuestion();
 }
 
 function tickTimer() {
-  const left = Math.max(0, state.testEndsAt - Date.now());
+  const left = Math.max(0, state.timedEndsAt - Date.now());
   const s = Math.ceil(left / 1000);
   $('clock').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  setTimerBar(left / (TEST_SECONDS * 1000));
+  setTimerBar(left / state.timerTotalMs);
   if (left <= 0) endSession();
 }
 
 function nextQuestion() {
-  state.question = generateQuestion(state.tier);
-  state.picks = [];
+  if (state.mode === 'practice' && state.practiceMode === 'random') {
+    const typeId = state.practiceTypes[Math.floor(Math.random() * state.practiceTypes.length)];
+    state.question = generateQuestionOfType(typeId);
+    state.tier = state.question.tier;
+  } else {
+    state.question = generateQuestion(state.tier);
+  }
+  state.picks = unknownSteps(state.question).map(() => null);
   state.answered = false;
   state.qStart = Date.now();
   state.lastAdvanceAt = Date.now();
@@ -127,68 +149,79 @@ function nextQuestion() {
   $('feedback').classList.add('hidden');
   $('btn-next').classList.add('hidden');
   $('btn-show-answer').classList.toggle('hidden', state.mode !== 'practice');
+  $('btn-confirm').classList.remove('hidden');
   renderPuzzle();
+}
+
+// The active row (keyboard target) is the first row without a pick.
+function activeRow() {
+  return state.picks.indexOf(null);
 }
 
 function renderPuzzle() {
   const q = state.question;
-  const unknowns = unknownSteps(q);
   let unknownIdx = 0;
+  const active = activeRow();
   const stepsHtml = q.steps.map((step) => {
     if (step.given) {
-      return `<div class="step-row"><span class="row-label">given</span>
-        <button class="op-card given" disabled>${permToString(step.given)}</button><span class="row-label"></span></div>`;
+      // Given codes are plaques inserted in-line on the central pipe (the
+      // real UI). The tiny "fixed" tag is a practice-only training aid.
+      return `<div class="pipe-plaque-wrap">
+        <button class="op-card given" disabled>${permToString(step.given)}</button>
+        ${state.mode === 'practice' ? '<span class="fixed-tag">fixed</span>' : ''}</div>`;
     }
     const rowIdx = unknownIdx++;
-    const isActive = rowIdx === state.picks.length && !state.answered;
-    // Rows beyond the active one are visibly locked (tier 4): a silent dead
-    // tap on a phone reads as a broken app.
-    const isLocked = rowIdx > state.picks.length && !state.answered;
+    const showKeys = rowIdx === active && !state.answered;
     const cards = step.options.map((opt, i) => {
       const picked = state.picks[rowIdx] === i;
-      const showKeys = isActive;
-      return `<button class="op-card${picked ? ' selected' : ''}${isLocked ? ' locked' : ''}"
-        data-row="${rowIdx}" data-opt="${i}" ${isLocked ? 'disabled' : ''}>
+      return `<button class="op-card${picked ? ' selected' : ''}"
+        data-row="${rowIdx}" data-opt="${i}" ${state.answered ? 'disabled' : ''}>
         ${showKeys ? `<span class="key-hint">${i + 1}</span>` : ''}${permToString(opt)}</button>`;
     }).join('');
-    const label = unknowns.length > 1 ? `<span class="row-label">row ${rowIdx + 1}</span>` : '<span class="row-label"></span>';
-    return `<div class="step-row${isActive ? ' active-row' : ''}" data-rowwrap="${rowIdx}">${label}${cards}<span class="row-label"></span></div>`;
-  }).join('<div class="pipe-joint"></div>');
+    return `<div class="ring" data-rowwrap="${rowIdx}">${cards}</div>`;
+  }).join('');
 
   $('puzzle').innerHTML = `
     <div class="col-indices">${[1, 2, 3, 4].map((n) => `<span>${n}</span>`).join('')}</div>
     ${tileRow(q.symbols)}
     ${funnelSvg(false)}
-    <div class="steps">${stepsHtml}</div>
+    <div class="manifold">${stepsHtml}</div>
     ${funnelSvg(true)}
     ${tileRow(q.output)}`;
 
   for (const btn of $('puzzle').querySelectorAll('.op-card:not(.given)')) {
     btn.addEventListener('click', () => pickOption(Number(btn.dataset.row), Number(btn.dataset.opt)));
   }
+  updateConfirm();
+}
+
+function updateConfirm() {
+  const ready = !state.answered && state.picks.length > 0 && !state.picks.includes(null);
+  $('btn-confirm').disabled = !ready;
 }
 
 function pickOption(row, opt) {
   if (state.answered) return;
-  // In test mode the next question renders in the same tick as the answer, so
-  // the second half of a double-tap would land on a question the player never
-  // saw. No human reads a puzzle in 300ms.
+  // In test mode the next question renders in the same tick as confirmation,
+  // so the second half of a double-tap would land on a question the player
+  // never saw. No human reads a puzzle in 300ms.
   if (Date.now() - state.lastAdvanceAt < 300) return;
-  const unknowns = unknownSteps(state.question);
-  if (row !== state.picks.length) {
-    // Allow re-picking an earlier row before submission: truncate and retake.
-    if (row < state.picks.length) state.picks = state.picks.slice(0, row);
-    else return;
-  }
-  state.picks.push(opt);
-  if (state.picks.length === unknowns.length) submit(false);
-  else renderPuzzle();
+  state.picks[row] = opt;
+  renderPuzzle();
 }
 
 function undoPick() {
-  if (state.answered || state.picks.length === 0) return;
-  state.picks.pop();
+  if (state.answered) return;
+  const filled = state.picks.map((p, i) => (p !== null ? i : -1)).filter((i) => i >= 0);
+  if (!filled.length) return;
+  state.picks[filled[filled.length - 1]] = null;
   renderPuzzle();
+}
+
+function confirmAnswer() {
+  if (state.answered || state.picks.includes(null) || !state.picks.length) return;
+  if (Date.now() - state.lastAdvanceAt < 300) return;
+  submit(false);
 }
 
 function submit(revealed) {
@@ -198,7 +231,9 @@ function submit(revealed) {
   state.results.push({ tier: q.tier, correct, ms, revealed });
   state.answered = true;
 
-  if (state.fixedTier === null) {
+  // The adaptive ladder drives Test mode and Progressive practice; Random
+  // practice picks its own type per question instead.
+  if (state.mode === 'test' || state.practiceMode === 'progressive') {
     const adv = nextTier(state.tier, state.streak, correct);
     state.tier = adv.tier;
     state.streak = adv.streak;
@@ -215,6 +250,7 @@ function submit(revealed) {
 function showFeedback(correct, revealed, ms) {
   const q = state.question;
   markCards();
+  $('btn-confirm').classList.add('hidden');
   const fb = $('feedback');
   fb.classList.remove('hidden', 'good', 'bad');
   fb.classList.add(correct ? 'good' : 'bad');
@@ -233,7 +269,6 @@ function markCards() {
     if (!step.options) continue;
     rowIdx++;
     const wrap = $('puzzle').querySelector(`[data-rowwrap="${rowIdx}"]`);
-    wrap.classList.remove('active-row');
     for (const btn of wrap.querySelectorAll('.op-card')) {
       const i = Number(btn.dataset.opt);
       btn.querySelector('.key-hint')?.remove();
@@ -356,12 +391,58 @@ function renderStats() {
     <div class="trend">${trendBars}</div>
     <p class="muted">teal = test, light = practice</p>
     <table class="tier-table"><tr><th>Level</th><th>Correct</th><th>Accuracy</th></tr>${tierRows}</table>
-    ${s.weakest ? `<p class="muted">Focus suggestion: drill <strong>Level ${s.weakest.tier}</strong> in practice mode (fixed difficulty).</p>` : ''}`;
+    ${s.weakest ? `<p class="muted">Focus suggestion: drill <strong>Level ${s.weakest.tier}</strong> — in Practice, pick "Random" and tick only that level's question types.</p>` : ''}`;
+}
+
+/* ---------------- practice settings panel ---------------- */
+
+const PREFS_KEY = `switch-challenge-prefs-v1:${location.pathname}`;
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      mode: document.querySelector('input[name="pmode"]:checked').value,
+      types: [...document.querySelectorAll('#setup-types input:checked')].map((el) => Number(el.value)),
+      infinite: $('p-infinite').checked,
+      min: Number($('p-min').value) || 0,
+      sec: Number($('p-sec').value) || 0,
+    }));
+  } catch (e) { /* prefs just won't persist */ }
+}
+
+function initPracticeSetup() {
+  $('setup-types').innerHTML = QUESTION_TYPES.map((t) => `
+    <label><input type="checkbox" value="${t.id}" checked> ${t.label}</label>`).join('');
+
+  let prefs = null;
+  try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY)); } catch (e) { /* fresh */ }
+  if (prefs && typeof prefs === 'object') {
+    const mode = prefs.mode === 'random' ? 'random' : 'progressive';
+    document.querySelector(`input[name="pmode"][value="${mode}"]`).checked = true;
+    if (Array.isArray(prefs.types) && prefs.types.length) {
+      for (const el of document.querySelectorAll('#setup-types input')) {
+        el.checked = prefs.types.includes(Number(el.value));
+      }
+    }
+    $('p-infinite').checked = prefs.infinite !== false;
+    if (Number.isFinite(Number(prefs.min))) $('p-min').value = Math.max(0, Math.min(60, Number(prefs.min)));
+    if (Number.isFinite(Number(prefs.sec))) $('p-sec').value = Math.max(0, Math.min(59, Number(prefs.sec)));
+  }
+
+  const syncPanels = () => {
+    const random = document.querySelector('input[name="pmode"]:checked').value === 'random';
+    $('setup-types').classList.toggle('disabled', !random);
+    $('p-time-inputs').classList.toggle('disabled', $('p-infinite').checked);
+  };
+  document.querySelector('#practice-setup').addEventListener('change', () => { syncPanels(); savePrefs(); });
+  syncPanels();
 }
 
 /* ---------------- wiring ---------------- */
 
+initPracticeSetup();
 $('btn-practice').addEventListener('click', () => startSession('practice'));
+$('btn-confirm').addEventListener('click', confirmAnswer);
 $('btn-test').addEventListener('click', () => startSession('test'));
 $('btn-stats').addEventListener('click', () => { renderStats(); show('stats'); });
 $('btn-tips').addEventListener('click', () => { $('tips-body').innerHTML = TIPS_HTML; show('tips'); });
@@ -385,17 +466,18 @@ document.addEventListener('keydown', (e) => {
   if (state.screen === 'game') {
     if (e.key >= '1' && e.key <= '3' && !state.answered) {
       const unknowns = unknownSteps(state.question);
-      const row = state.picks.length;
+      const row = activeRow();
       const opt = Number(e.key) - 1;
-      if (row < unknowns.length && opt < unknowns[row].options.length) {
+      if (row >= 0 && opt < unknowns[row].options.length) {
         pickOption(row, opt);
         e.preventDefault();
       }
     } else if (e.key === 'Backspace') {
       undoPick();
       e.preventDefault();
-    } else if ((e.key === 'Enter' || e.key === ' ') && state.answered) {
-      nextQuestion();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (state.answered) nextQuestion();
+      else confirmAnswer();
       e.preventDefault();
     } else if (e.key === 'Escape' && !e.repeat) {
       endSession();
