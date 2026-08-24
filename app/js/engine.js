@@ -1,25 +1,40 @@
 // Core game engine: permutations, question generation, difficulty tiers.
-// Operator semantics (verified against the reference videos): an operator is a
-// 4-digit code d1 d2 d3 d4 where OUTPUT position k receives the symbol from
-// INPUT position d_k. Example: input [A,B,C,D] + operator 2413 -> [B,D,A,C].
+//
+// Operator semantics (verified in all three reference videos, see MECHANICS.md):
+// an operator is a 4-digit code d1 d2 d3 d4 where OUTPUT position k receives
+// the symbol from INPUT position d_k. Example: [A,B,C,D] + 2413 -> [B,D,A,C].
+//
+// Difficulty (from the videos — option count is ALWAYS 3; difficulty comes
+// from chain depth and where the unknown operator sits):
+//   tier 1: single switch, pick 1 of 3 codes
+//   tier 2: two chained switches, one operator given (before or after the
+//           unknown), pick the unknown from 3 codes
+//   tier 3: three chained switches, two operators given, unknown is last or
+//           middle, pick from 3 codes
+//   tier 4: two chained switches, BOTH unknown — two rows sharing one set of
+//           3 codes, pick one code per row ("most difficult levels" video)
 
 export const SYMBOL_POOL = [
-  { id: 'circle', color: '#34a853', label: 'green circle' },
-  { id: 'cross', color: '#4285f4', label: 'blue cross' },
-  { id: 'square', color: '#ea4335', label: 'red square' },
-  { id: 'triangle', color: '#f9ab00', label: 'yellow triangle' },
-  { id: 'diamond', color: '#9c27b0', label: 'purple diamond' },
+  { id: 'circle', color: '#3e8e58', label: 'green circle' },
+  { id: 'cross', color: '#3d78c9', label: 'blue cross' },
+  { id: 'square', color: '#e2694e', label: 'red square' },
+  { id: 'triangle', color: '#f0b400', label: 'yellow triangle' },
+  { id: 'diamond', color: '#8e44ad', label: 'purple diamond' },
   { id: 'star', color: '#00acc1', label: 'teal star' },
-  { id: 'heart', color: '#e91e63', label: 'pink heart' },
-  { id: 'hexagon', color: '#795548', label: 'brown hexagon' },
 ];
 
-// The classic AON set shown in the videos; used with high probability so the
-// practice screen looks like the real thing, with occasional variety.
+// The classic AON set shown in the videos (always these four, varying order).
 const CLASSIC_SET = ['circle', 'cross', 'square', 'triangle'];
+
+export const OPTION_COUNT = 3;
 
 export function applyOperator(perm, symbols) {
   return perm.map((src) => symbols[src - 1]);
+}
+
+// Run a full chain of operators over an input row.
+export function applyChain(perms, symbols) {
+  return perms.reduce((row, p) => applyOperator(p, row), symbols);
 }
 
 export function permToString(perm) {
@@ -53,36 +68,38 @@ function permsEqual(a, b) {
   return a.every((v, i) => v === b[i]);
 }
 
-// Near-miss distractors: permutations that differ from the correct one in
-// exactly two positions (one transposition away), or three positions when we
-// need more variety. Plausible because most digits match the correct code.
-function nearMissDistractors(correct, count, rng) {
+// compose(a, b) = "a then b" as a single permutation: out[k] = in[c[k]].
+export function compose(a, b) {
+  return b.map((src) => a[src - 1]);
+}
+
+// Near-miss distractors: transpositions of the correct code (differ in exactly
+// two digits), topped up with 3-cycles (differ in exactly three). Mirrors the
+// close option sets seen in the videos (e.g. 2341 / 2314 / 3241).
+function nearMissDistractors(correct, count, rng, forbidden = new Set()) {
   const out = [];
-  const seen = new Set([permToString(correct)]);
+  const seen = new Set([permToString(correct), '1234', ...forbidden]);
   const pairs = shuffled(
-    [
-      [0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3],
-    ],
+    [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]],
     rng,
   );
-  // Transpositions of the correct code (differ in exactly 2 positions).
   for (const [i, j] of pairs) {
     if (out.length >= count) break;
     const p = correct.slice();
     [p[i], p[j]] = [p[j], p[i]];
     const key = permToString(p);
-    if (!seen.has(key) && key !== '1234') {
+    if (!seen.has(key)) {
       seen.add(key);
       out.push(p);
     }
   }
-  // 3-cycles of the correct code (differ in exactly 3 positions) as backup.
-  while (out.length < count) {
+  let guard = 0;
+  while (out.length < count && guard++ < 100) {
     const [i, j, k] = shuffled([0, 1, 2, 3], rng).slice(0, 3);
     const p = correct.slice();
     [p[i], p[j], p[k]] = [p[j], p[k], p[i]];
     const key = permToString(p);
-    if (!seen.has(key) && key !== '1234') {
+    if (!seen.has(key)) {
       seen.add(key);
       out.push(p);
     }
@@ -91,76 +108,103 @@ function nearMissDistractors(correct, count, rng) {
 }
 
 function pickSymbols(rng) {
-  // ~70% of questions use the classic green/blue/red/yellow set.
-  if (rng() < 0.7) {
-    return CLASSIC_SET.map((id) => SYMBOL_POOL.find((s) => s.id === id));
-  }
-  return shuffled(SYMBOL_POOL, rng).slice(0, 4);
+  // The real test always uses the classic four; ~80% of questions do too,
+  // with occasional variety for extra working-memory training.
+  const ids = rng() < 0.8 ? CLASSIC_SET : shuffled(SYMBOL_POOL.map((s) => s.id), rng).slice(0, 4);
+  return shuffled(ids.map((id) => SYMBOL_POOL.find((s) => s.id === id)), rng);
 }
 
-// Difficulty tiers, matching the ramp seen in the videos:
-//  1: single operator, 3 options
-//  2: single operator, 4 options (near-miss distractors throughout)
-//  3: chained (two stacked funnels), find the MISSING second operator, 3 options
-//  4: chained, find the missing operator (first or second), 4 options
 export const TIERS = [
-  { id: 1, chain: false, options: 3, label: 'Single · 3 options' },
-  { id: 2, chain: false, options: 4, label: 'Single · 4 options' },
-  { id: 3, chain: true, options: 3, label: 'Chained · 3 options' },
-  { id: 4, chain: true, options: 4, label: 'Chained · 4 options' },
+  { id: 1, kind: 'single', label: 'Single switch' },
+  { id: 2, kind: 'chain2-given', label: 'Double switch · one given' },
+  { id: 3, kind: 'chain3-given', label: 'Triple switch · two given' },
+  { id: 4, kind: 'chain2-open', label: 'Double switch · both unknown' },
 ];
 
+// A question is:
+// { tier, kind, symbols, output, steps }
+// where steps is an ordered array (top to bottom between the funnels) of:
+//   { given: perm }                          — a fixed dark card
+//   { options: [perm x3], answerIndex }      — a row of selectable cards
+// tier 4 has two option steps sharing one option set; others exactly one.
 export function generateQuestion(tierId, rng = Math.random) {
   const tier = TIERS.find((t) => t.id === tierId) ?? TIERS[0];
   const symbols = pickSymbols(rng);
 
-  if (!tier.chain) {
-    const correct = randomPermutation(rng);
-    const output = applyOperator(correct, symbols);
-    const options = shuffled(
-      [correct, ...nearMissDistractors(correct, tier.options - 1, rng)],
-      rng,
-    );
-    return {
-      tier: tier.id,
-      chain: false,
-      symbols,
-      output,
-      options,
-      answerIndex: options.findIndex((p) => permsEqual(p, correct)),
-      correct,
-    };
+  if (tier.kind === 'chain2-open') {
+    return generateChain2Open(tier, symbols, rng);
   }
 
-  // Chained question: input -> knownOp -> mid -> unknownOp -> output (or the
-  // unknown first). The player picks the code for the "?" funnel.
-  const known = randomPermutation(rng, { allowIdentity: false });
-  const correct = randomPermutation(rng);
-  const unknownFirst = tier.id >= 4 && rng() < 0.5;
-  let output;
-  if (unknownFirst) {
-    output = applyOperator(known, applyOperator(correct, symbols));
-  } else {
-    output = applyOperator(correct, applyOperator(known, symbols));
-  }
-  // Distractors must not accidentally solve the chain: with 4 distinct
-  // symbols, distinct permutations in the "?" slot always give distinct
-  // outputs, so near-misses are safe.
+  const chainLen = tier.kind === 'single' ? 1 : tier.kind === 'chain2-given' ? 2 : 3;
+  // Position of the unknown operator within the chain. Together with tiers 1
+  // and 4 this covers all "7 question types" named in the study-guide page
+  // shown in the mqsoRw9PJ2M video (33:20).
+  let unknownAt = 0;
+  if (tier.kind === 'chain2-given') unknownAt = randInt(2, rng);
+  if (tier.kind === 'chain3-given') unknownAt = randInt(3, rng);
+
+  let perms;
+  let guard = 0;
+  do {
+    perms = Array.from({ length: chainLen }, () => randomPermutation(rng));
+    // Avoid a chain that composes to the identity (output identical to input
+    // reads as a broken question).
+  } while (chainLen > 1 && permToString(perms.reduce(compose)) === '1234' && guard++ < 50);
+
+  const output = applyChain(perms, symbols);
+  const correct = perms[unknownAt];
   const options = shuffled(
-    [correct, ...nearMissDistractors(correct, tier.options - 1, rng)],
+    [correct, ...nearMissDistractors(correct, OPTION_COUNT - 1, rng)],
     rng,
   );
-  return {
-    tier: tier.id,
-    chain: true,
-    unknownFirst,
-    known,
-    symbols,
-    output,
-    options,
-    answerIndex: options.findIndex((p) => permsEqual(p, correct)),
-    correct,
-  };
+  const steps = perms.map((p, i) => (
+    i === unknownAt
+      ? { options, answerIndex: options.findIndex((o) => permsEqual(o, correct)) }
+      : { given: p }
+  ));
+  return { tier: tier.id, kind: tier.kind, symbols, output, steps };
+}
+
+// Tier 4: both operators unknown; the two rows share one set of 3 codes (as in
+// the "most difficult levels" video). The player picks one code per row, and
+// exactly one of the 9 ordered pairs must produce the output.
+function generateChain2Open(tier, symbols, rng) {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const a = randomPermutation(rng);
+    const b = randomPermutation(rng);
+    if (permToString(compose(a, b)) === '1234') continue;
+    const extras = nearMissDistractors(rng() < 0.5 ? a : b, 1, rng,
+      new Set([permToString(a), permToString(b)]));
+    const set = shuffled([a, b, ...extras], rng);
+    // Uniqueness across all ordered pairs from the shared set.
+    const target = permToString(compose(a, b));
+    let matches = 0;
+    for (const p of set) {
+      for (const q of set) {
+        if (permToString(compose(p, q)) === target) matches++;
+      }
+    }
+    if (matches !== 1) continue;
+    const output = applyChain([a, b], symbols);
+    const row1 = { options: set, answerIndex: set.findIndex((p) => permsEqual(p, a)) };
+    const row2 = { options: set, answerIndex: set.findIndex((p) => permsEqual(p, b)) };
+    return {
+      tier: tier.id, kind: tier.kind, symbols, output, steps: [row1, row2],
+    };
+  }
+  // Practically unreachable; fall back to a tier-2 question rather than loop.
+  return generateQuestion(2, rng);
+}
+
+export function unknownSteps(question) {
+  return question.steps.filter((s) => s.options);
+}
+
+// checkAnswer(question, picks) — picks is an array of option indexes, one per
+// unknown step, in order.
+export function checkAnswer(question, picks) {
+  const unknowns = unknownSteps(question);
+  return unknowns.every((step, i) => picks[i] === step.answerIndex);
 }
 
 // Adaptive difficulty for Test mode: two in a row correct moves up a tier,
@@ -172,8 +216,9 @@ export function nextTier(current, streak, wasCorrect) {
   return { tier: current, streak: s };
 }
 
-// Rough percentile band from accuracy and number of correct answers in the
-// 6-minute test, calibrated against prep-guide guidance (see MECHANICS.md).
+// Rough percentile band from the 6-minute test, calibrated against
+// prep-guide guidance (see MECHANICS.md — this is an estimate, not AON's
+// real adaptive-theta scoring).
 export function percentileBand(correct, attempted) {
   const accuracy = attempted ? correct / attempted : 0;
   if (correct >= 14 && accuracy >= 0.9) return { band: '90th+', label: 'Outstanding' };
